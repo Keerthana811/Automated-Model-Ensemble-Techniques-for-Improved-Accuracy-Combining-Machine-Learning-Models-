@@ -1,0 +1,84 @@
+import numpy as np
+import pandas as pd
+import streamlit as st
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split, cross_val_predict
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.svm import SVC
+from sklearn.linear_model import LogisticRegression
+from sklearn.neural_network import MLPClassifier
+from sklearn.metrics import accuracy_score
+
+# Load dataset
+data = load_iris()
+X = data.data
+y = data.target
+
+# Split data into train and test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Define base models
+base_models = [
+    ('Random Forest', RandomForestClassifier(n_estimators=100, random_state=42)),
+    ('Gradient Boosting', GradientBoostingClassifier(n_estimators=100, random_state=42)),
+    ('SVC', SVC(kernel='rbf', C=1.0, gamma='scale', probability=True, random_state=42)),
+    ('Logistic Regression', LogisticRegression(max_iter=1000, random_state=42)),
+    ('MLP', MLPClassifier(hidden_layer_sizes=(100,), max_iter=1000, random_state=42))
+]
+
+# Generate stacking features using out-of-fold predictions
+def generate_stack_features(models, X_train, y_train):
+    stack_features = []
+    for name, model in models:
+        if name == 'SVC':
+            preds = cross_val_predict(model, X_train, y_train, cv=5, method='decision_function')
+            if len(preds.shape) == 1:
+                preds = preds.reshape(-1, 1)
+        else:
+            preds = cross_val_predict(model, X_train, y_train, cv=5, method='predict_proba')
+        if preds.shape[1] == 2:
+            preds = preds[:, 1]
+        stack_features.append(preds)
+    return np.hstack(stack_features)
+
+# Generate stacked features for training
+stack_train = generate_stack_features(base_models, X_train, y_train)
+
+# Train meta-model (Logistic Regression)
+meta_model = LogisticRegression(max_iter=1000, random_state=42)
+meta_model.fit(stack_train, y_train)
+
+# Train base models on full training set
+for name, model in base_models:
+    model.fit(X_train, y_train)
+
+# Streamlit Interface
+st.title("Stacking Ensemble Model - Iris Dataset")
+st.write("Enter feature values to predict the class of a flower using an ensemble model.")
+
+sepal_length = st.number_input("Sepal Length", min_value=0.0, max_value=10.0, step=0.1)
+sepal_width = st.number_input("Sepal Width", min_value=0.0, max_value=10.0, step=0.1)
+petal_length = st.number_input("Petal Length", min_value=0.0, max_value=10.0, step=0.1)
+petal_width = st.number_input("Petal Width", min_value=0.0, max_value=10.0, step=0.1)
+
+if st.button("Predict Class"):
+    user_input = np.array([[sepal_length, sepal_width, petal_length, petal_width]])
+    
+    # Generate stacking features for user input
+    stack_input = []
+    for name, model in base_models:
+        if name == 'SVC':
+            preds = model.decision_function(user_input)
+            if len(preds.shape) == 1:
+                preds = preds.reshape(-1, 1)
+        else:
+            preds = model.predict_proba(user_input)
+        if preds.shape[1] == 2:
+            preds = preds[:, 1]
+        stack_input.append(preds)
+    stack_input = np.hstack(stack_input)
+    
+    # Predict using the meta model
+    prediction = meta_model.predict([stack_input])
+    class_name = data.target_names[prediction[0]]
+    st.success(f"Predicted Class: {class_name}")
