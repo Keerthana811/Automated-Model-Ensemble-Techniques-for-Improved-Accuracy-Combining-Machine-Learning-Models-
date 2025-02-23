@@ -1,42 +1,23 @@
-from flask import Flask, jsonify, request
-from utils import load_data, get_summary, train_models, predict_total_sales
-import joblib
-import pandas as pd
-from flask_cors import CORS
-import os
+import streamlit as st
+import requests
 
-app = Flask(__name__)
+BACKEND_URL = "http://localhost:5000"
 
-CORS(app)  # Enable CORS
+st.title("Supermarket Sales Dashboard with Advanced Prediction")
 
-data = load_data("../data/supermarket_sales.csv")
-models = train_models(data)
+# 🚀 Summary section
+st.header("Summary Statistics")
+sum_response = requests.get(f"{BACKEND_URL}/summary").json()
+st.write(f"**Total Sales:** ${sum_response['total_sales']:.2f}")
+st.write(f"**Average Rating:** {sum_response['avg_rating']:.2f}")
+st.write(f"**Transactions:** {sum_response['num_transactions']}")
 
-MODEL_PATH = "../models/stacking_model.pkl"
+# 🔮 Prediction section
+st.header("Predict Total Sales (Using XGBoost, Random Forest, and Stacking)")
+quantity = st.number_input("Enter Quantity", min_value=1, value=1)
+unit_price = st.number_input("Enter Unit Price", min_value=0.0, value=0.0, format="%.2f")
 
-# Load the trained model
-if os.path.exists(MODEL_PATH):
-    try:
-        model = joblib.load(MODEL_PATH)
-        print("✅ Model loaded successfully.")
-    except Exception as e:
-        print(f"🔥 Error loading the model: {e}")
-        model = None
-else:
-    print("⚠️ Model file not found at:", MODEL_PATH)
-    model = None
-
-
-@app.route("/summary", methods=["GET"])
-def summary():
-    summary_data = get_summary(data)
-    return jsonify(summary_data)
-
-@app.route("/predict", methods=["POST"])
-def predict():
-    input_data = request.json
-    prediction = predict_total_sales(models, input_data)
-    return jsonify({"predicted_total_sales": prediction})
-
-if __name__ == "__main__":
-    app.run(debug=True)
+if st.button("Predict Total Sales"):
+    payload = {"Quantity": quantity, "Unit price": unit_price}
+    response = requests.post(f"{BACKEND_URL}/predict", json=payload).json()
+    st.success(f"Predicted Total Sales: ${response['predicted_total_sales']:.2f}")
