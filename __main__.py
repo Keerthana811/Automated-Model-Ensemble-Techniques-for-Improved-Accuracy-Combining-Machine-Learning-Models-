@@ -1,6 +1,12 @@
-from __future__ import annotations
+import argparse
 
-from .cli import cli_detect
+from certifi import contents, where
 
-if __name__ == "__main__":
-    cli_detect()
+parser = argparse.ArgumentParser()
+parser.add_argument("-c", "--contents", action="store_true")
+args = parser.parse_args()
+
+if args.contents:
+    print(contents())
+else:
+    print(where())
